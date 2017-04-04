@@ -10,6 +10,7 @@
 #include "conduct.h"
 
 struct conduct{
+  char * name;
   size_t *c;
   size_t *a;
   int *addr;
@@ -29,6 +30,7 @@ cond->addr=(int*)mmap(NULL, c, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOU
   }
 }
 else{
+  cond->name=strdup(name);
   int fd=open(name, O_CREAT | O_RDWR, 0666);
   if(fd==NULL){
     perror("no file descriptor error open");
@@ -90,9 +92,16 @@ int conduct_write_eof(struct conduct *c){
 }
 
 void conduct_close(struct conduct *conduct){
-
+free(conduct);
 }
 
 void conduct_destroy(struct conduct *conduct){
-
+munmap(conduct->addr, *conduct->c);
+free(conduct->a);
+free(conduct->c);
+if(conduct->name == NULL){
+  unlink(conduct->name);
+  free(conduct->name);
+}
+conduct_close(conduct);
 }
