@@ -30,6 +30,9 @@ struct conduct *conduct_create(const char *name, size_t a, size_t c){
   *cond->c=c;
   cond->eof = (int *)malloc(sizeof(int));
   *cond->eof = 0;
+  cond->verrou = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
+  cond->empty_conduct = (pthread_cond_t *)malloc(sizeof(pthread_cond_t));
+  cond->full_conduct = (pthread_cond_t *)malloc(sizeof(pthread_cond_t));
   pthread_mutex_init(cond->verrou,NULL);
   pthread_cond_init(cond->empty_conduct,NULL);
   pthread_cond_init(cond->full_conduct,NULL);
@@ -103,7 +106,7 @@ ssize_t conduct_read(struct conduct *c, void *buf, size_t count){
     memcpy(buf,c->addr,m);
     *c->a = *c->a - m;
     pthread_cond_broadcast(c->full_conduct);
-  pthread_mutex_lock(c->verrou);
+  pthread_mutex_unlock(c->verrou);
   return m;
 }
 
@@ -126,13 +129,14 @@ ssize_t conduct_write(struct conduct *c, const void *buf, size_t count){
     memcpy(c->addr,buf,m);
     *c->a = *c->a  + m;
     pthread_cond_broadcast(c->empty_conduct);
-  pthread_mutex_lock(c->verrou);
+  pthread_mutex_unlock(c->verrou);
   return m;
 }
 
 int conduct_write_eof(struct conduct *c){
   if (*c->eof == 0) {
     *c->eof = 1;
+    pthread_cond_broadcast(c->empty_conduct);
   }
   return 0;
 }
