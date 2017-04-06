@@ -20,6 +20,7 @@ struct conduct{
   pthread_mutex_t *verrou;
   pthread_cond_t *empty_conduct;
   pthread_cond_t *full_conduct;
+  pthread_cond_t *not_enough_place;
 }conduct;
 
 struct conduct *conduct_create(const char *name, size_t a, size_t c){
@@ -33,9 +34,11 @@ struct conduct *conduct_create(const char *name, size_t a, size_t c){
   cond->verrou = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
   cond->empty_conduct = (pthread_cond_t *)malloc(sizeof(pthread_cond_t));
   cond->full_conduct = (pthread_cond_t *)malloc(sizeof(pthread_cond_t));
+  cond->not_enough_place = (pthread_cond_t *)malloc(sizeof(pthread_cond_t));
   pthread_mutex_init(cond->verrou,NULL);
   pthread_cond_init(cond->empty_conduct,NULL);
   pthread_cond_init(cond->full_conduct,NULL);
+  pthread_cond_init(cond->not_enough_place,NULL);
   if(name==NULL){
     cond->addr = mmap(NULL, c, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if(cond->addr==MAP_FAILED){
@@ -94,10 +97,14 @@ struct conduct *conduct_open(const char*name){
 }
 
 ssize_t conduct_read(struct conduct *c, void *buf, size_t count){
+  printf("Thread lecture veut prendre le verrou\n");
   pthread_mutex_lock(c->verrou);
+  printf("Thread lecture prend le verrou\n");
     while (*c->a == 0) {
       if(*c->eof == 0){
+        printf("Thread lecture pas de eof s'endort sur vide\n");
         pthread_cond_wait(c->empty_conduct, c->verrou);
+        printf("Thread lecture se reveille\n");
       }else{
         return 0;
       }
@@ -105,31 +112,43 @@ ssize_t conduct_read(struct conduct *c, void *buf, size_t count){
     size_t m = minimum(*c->a, count);
     memcpy(buf,c->addr,m);
     *c->a = *c->a - m;
+    printf("Thread lecture broadcast sur full\n");
+    pthread_cond_signal(c->not_enough_place);
     pthread_cond_broadcast(c->full_conduct);
   pthread_mutex_unlock(c->verrou);
+  printf("Thread lecture relache le verrou\n");
   return m;
 }
 
 ssize_t conduct_write(struct conduct *c, const void *buf, size_t count){
+  printf("Thread ecriture veut prendre le verrou\n");
   pthread_mutex_lock(c->verrou);
+  printf("Thread ecriture prend le verrou\n");
     if (*c->a == *c->c) {
-        pthread_cond_wait(c->full_conduct, c->verrou);
+      printf("Thread ecriture s'endort sur full\n");
+      pthread_cond_wait(c->full_conduct, c->verrou);
+      printf("Thread ecriture se reveille de full\n");
     }
     if (*c->eof == 1) {
 
+      printf("Thread ecriture il ya eof\n");
+      pthread_mutex_unlock(c->verrou);
+      printf("Thread ecriture relache le verrou\n");
       return -1;
     }
     size_t m = 0;
-    if (count <= (*c->c-*c->a)) {
-      m = count;
+    if (count <= *c->a && count > (*c->c-*c->a)) {
+      printf("Thread ecriture s'endort sur not_enough_place\n");
+      pthread_cond_wait(c->not_enough_place, c->verrou);
+      printf("Thread ecriture se reveille de not_enough_place\n");
     }
-    else{
-      m = *c->c - *c->a;
-    }
+    m = *c->c - *c->a;
     memcpy(c->addr,buf,m);
     *c->a = *c->a  + m;
+    printf("Thread ecriture broadcast sur empty\n");
     pthread_cond_broadcast(c->empty_conduct);
   pthread_mutex_unlock(c->verrou);
+  printf("Thread ecriture relache le verrou\n");
   return m;
 }
 
