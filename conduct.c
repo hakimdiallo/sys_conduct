@@ -76,6 +76,7 @@ struct conduct *conduct_create(const char *name, size_t a, size_t c){
       exit(-1);
     }
   }
+  memset(cond->addr, 0, *cond->c);
   return cond;
 }
 
@@ -114,6 +115,16 @@ ssize_t conduct_read(struct conduct *c, void *buf, size_t count){
     }
     size_t m = minimum(*c->current_size, count);
     memcpy(buf,c->addr,m);
+    if (m == *c->current_size) {
+      memset(c->addr, 0, *c->c);
+    }
+    else{
+      void *tmp = (void *)malloc(*c->c*sizeof(void));
+      memset(tmp, 0, *c->c);
+      memcpy(tmp, c->addr+m, *c->current_size - m);
+      memset(c->addr, 0, *c->c);
+      memcpy(c->addr, tmp, *c->current_size - m);
+    }
     printf("%d\n", (int)*c->current_size);
     *c->current_size = *c->current_size - m;
     printf("%d\n", (int)*c->current_size);
@@ -144,7 +155,7 @@ ssize_t conduct_write(struct conduct *c, const void *buf, size_t count){
       return -1;
     }
     if ((count <= *c->a && count <= (*c->c-*c->current_size)) || (count > *c->a && count <= (*c->c-*c->current_size))) {
-      memcpy(c->addr,buf,count);
+      memcpy(c->addr+*c->current_size,buf,count);
       *c->current_size = *c->current_size  + count;
       printf("Thread ecriture broadcast sur empty\n");
       pthread_cond_broadcast(c->empty_conduct);
@@ -154,7 +165,7 @@ ssize_t conduct_write(struct conduct *c, const void *buf, size_t count){
     }
     else if (count > *c->a && count > (*c->c-*c->current_size)) {
       size_t m = *c->c - *c->current_size;
-      memcpy(c->addr,buf,m);
+      memcpy(c->addr+*c->current_size,buf,m);
       *c->current_size = *c->current_size  + m;
       printf("Thread ecriture broadcast sur empty\n");
       pthread_cond_broadcast(c->empty_conduct);
