@@ -29,7 +29,7 @@ int main(){
     exit(-1);
   }
   printf("%s\n", buff);
-  conduct_close(cond);
+  conduct_destroy(cond);
   return 0;
   }
 }
