@@ -26,23 +26,29 @@ struct conduct{
 struct conduct *conduct_create(const char *name, size_t a, size_t c){
   struct conduct* cond;
   if(name==NULL){
-    cond = mmap(NULL, sizeof(struct conduct)+c, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    cond = (struct conduct *) mmap(NULL, sizeof(struct conduct)+c, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if(cond == MAP_FAILED){
       perror("conduct_create failed");
       exit(-1);
     }
   }
   else{
-    int fd=open(name, O_CREAT | O_RDWR, 0666);
+    int fd=open(name, O_CREAT |  O_RDWR, 0777);
     if(fd == -1){
       perror("no file descriptor error open");
       exit(-1);
     }
-    cond = mmap(NULL,sizeof(struct conduct *), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    int ft = ftruncate(fd, sizeof(struct conduct)+c);
+    if(ft == -1){
+      perror("ftruncate");
+      exit(-1);
+    }
+    cond = mmap(NULL,sizeof(struct conduct)+c, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if(cond == MAP_FAILED){
       perror("erreur map failed");
       exit(-1);
     }
+    close(fd);
     cond->name=strdup(name);
 
 
@@ -64,17 +70,24 @@ struct conduct *conduct_create(const char *name, size_t a, size_t c){
 }
 
 struct conduct *conduct_open(const char*name){
-  int fd=open(name, O_RDONLY);
+  int fd=open(name, O_RDWR, 0777);
   if(fd == -1){
     perror("failed to open the file");
     exit(-1);
   }
-  struct conduct *cond=(struct conduct*)malloc(sizeof(struct conduct));
-  cond = mmap(NULL,sizeof(struct conduct*), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  struct stat finfo;
+  int fs = fstat(fd, &finfo);
+  if(fs == -1){
+    perror("failed to fstat");
+    exit(-1);
+  }
+  struct conduct *cond;
+  cond = mmap(NULL,finfo.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if(cond == MAP_FAILED){
     perror("erreur map failed");
     exit(-1);
   }
+  cond->buffer = (void *)cond + sizeof(struct conduct);
   return cond;
 }
 
@@ -171,7 +184,16 @@ int conduct_write_eof(struct conduct *c){
 }
 
 void conduct_close(struct conduct *conduct){
-  free(conduct);
+  if(conduct->name == NULL ){
+    if(munmap(conduct, conduct->c + sizeof(struct conduct))  == -1){
+      perror("failed while unmaping");
+      exit(-1);
+    }
+  }
+  if(munmap(conduct, conduct->c + sizeof(struct conduct))  == -1){
+    perror("failed while unmaping");
+    exit(-1);
+  }
 }
 
 void conduct_destroy(struct conduct *conduct){
