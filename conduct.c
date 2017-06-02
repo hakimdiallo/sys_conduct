@@ -20,7 +20,9 @@ struct conduct{
   pthread_mutex_t verrou;
   pthread_cond_t empty_conduct;
   pthread_cond_t full_conduct;
-  void *buffer;
+  pthread_mutexattr_t mutex_attr;
+  pthread_condattr_t cond_attr;
+  //void *buffer;
 }conduct;
 
 struct conduct *conduct_create(const char *name, size_t a, size_t c){
@@ -55,13 +57,17 @@ struct conduct *conduct_create(const char *name, size_t a, size_t c){
     cond->name=strdup(name);
   }
   memset(cond, 0, (sizeof(struct conduct)+c));
-  pthread_mutex_init(&cond->verrou, NULL);
-  pthread_cond_init(&cond->empty_conduct,NULL);
-  pthread_cond_init(&cond->full_conduct,NULL);
-  cond->a=a;
-  cond->c=c;
+  pthread_mutexattr_init(&cond->mutex_attr);
+  pthread_condattr_init(&cond->cond_attr);
+  pthread_mutexattr_setpshared(&cond->mutex_attr, PTHREAD_PROCESS_SHARED);
+  pthread_condattr_setpshared(&cond->cond_attr, PTHREAD_PROCESS_SHARED);
+  pthread_mutex_init(&cond->verrou, &cond->mutex_attr);
+  pthread_cond_init(&cond->empty_conduct,&cond->cond_attr);
+  pthread_cond_init(&cond->full_conduct,&cond->cond_attr);
+  cond->a = a;
+  cond->c = c;
   cond->eof = 0;
-  cond->buffer = (void *) cond + sizeof(struct conduct);
+  //cond->buffer = (void *) cond + sizeof(struct conduct);
   cond->current_size = 0;
   return cond;
 }
@@ -85,7 +91,7 @@ struct conduct *conduct_open(const char*name){
     exit(EXIT_FAILURE);
   }
   cond = (struct conduct *) cond;
-  cond->buffer = (void *)cond + sizeof(struct conduct);
+  //cond->buffer = (void *)cond + sizeof(struct conduct);
   return cond;
 }
 
@@ -104,20 +110,20 @@ ssize_t conduct_read(struct conduct *c, void *buf, size_t count){
       }
     }
     size_t m = minimum(c->current_size, count);
-    memcpy(buf,c->buffer,m);
+    memcpy(buf,(void *)c+sizeof(struct conduct),m);
     if (m == c->current_size) {
-      memset(c->buffer, 0, c->c);
+      memset((void *)c+sizeof(struct conduct), 0, c->c);
     }
     else{
-      memmove(c->buffer, c->buffer+m, c->current_size - m);
-      memset(c->buffer+(c->current_size -m ), 0, c->c - (c->current_size - m));
+      memmove((void *)c+sizeof(struct conduct), (void *)c+sizeof(struct conduct)+m, c->current_size - m);
+      memset((void *)c+sizeof(struct conduct)+(c->current_size -m ), 0, c->c - (c->current_size - m));
     }
 //    printf("%d\n", (int)*c->current_size);
     c->current_size = c->current_size - m;
 //  printf("%d\n", (int)*c->current_size);
 //    printf("Thread lecture broadcast sur full\n");
-    pthread_cond_broadcast(&c->full_conduct);
   pthread_mutex_unlock(&c->verrou);
+  pthread_cond_broadcast(&c->full_conduct);
   printf("Thread lecture relache le verrou\n");
   return m;
 }
@@ -143,21 +149,21 @@ ssize_t conduct_write(struct conduct *c, const void *buf, size_t count){
     //  printf("Thread ecriture se reveille de full\n");
     }
     if ((count <= c->a && count <= (c->c-c->current_size)) || (count > c->a && count <= (c->c-c->current_size))) {
-      memcpy(c->buffer+c->current_size,buf,count);
+      memcpy((void *)c+sizeof(struct conduct)+c->current_size,buf,count);
       c->current_size = c->current_size  + count;
       //printf("Thread ecriture broadcast sur empty\n");
-      pthread_cond_broadcast(&c->empty_conduct);
       pthread_mutex_unlock(&c->verrou);
+      pthread_cond_broadcast(&c->empty_conduct);
       printf("Thread ecriture relache le verrou\n");
       return count;
     }
     else if (count > c->a && count > (c->c-c->current_size)) {
       size_t m = c->c - c->current_size;
-      memcpy(c->buffer+c->current_size,buf,m);
+      memcpy((void *)c+sizeof(struct conduct)+c->current_size,buf,m);
       c->current_size = c->current_size  + m;
       //printf("Thread ecriture broadcast sur empty\n");
-      pthread_cond_broadcast(&c->empty_conduct);
       pthread_mutex_unlock(&c->verrou);
+      pthread_cond_broadcast(&c->empty_conduct);
       printf("Thread ecriture relache le verrou\n");
       return m;
     }
