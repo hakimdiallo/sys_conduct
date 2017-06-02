@@ -45,12 +45,12 @@ struct conduct *conduct_create(const char *name, size_t a, size_t c){
     int ft = ftruncate(fd, sizeof(struct conduct)+c);
     if(ft == -1){
       perror("ftruncate");
-      exit(EXIT_FAILURE);
+      return NULL;
     }
     cond = mmap(NULL,sizeof(struct conduct)+c, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if(cond == MAP_FAILED){
       perror("mmap");
-      exit(EXIT_FAILURE);
+      return NULL;
     }
     cond = (struct conduct *) cond;
     close(fd);
@@ -88,7 +88,7 @@ struct conduct *conduct_open(const char*name){
   cond = mmap(NULL,finfo.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if(cond == MAP_FAILED){
     perror("mmap");
-    exit(EXIT_FAILURE);
+    return NULL;
   }
   cond = (struct conduct *) cond;
   //cond->buffer = (void *)cond + sizeof(struct conduct);
@@ -177,20 +177,16 @@ ssize_t conduct_write(struct conduct *c, const void *buf, size_t count){
 }
 
 int conduct_write_eof(struct conduct *c){
+  pthread_mutex_lock(&c->verrou);
   if (c->eof == 0) {
     c->eof = 1;
     pthread_cond_broadcast(&c->empty_conduct);
   }
+  pthread_mutex_unlock(&c->verrou);
   return 0;
 }
 
 void conduct_close(struct conduct *conduct){
-  if(conduct->name == NULL ){
-    if(munmap(conduct, conduct->c + sizeof(struct conduct))  == -1){
-      perror("failed while unmaping");
-      exit(EXIT_FAILURE);
-    }
-  }
   if(munmap(conduct, conduct->c + sizeof(struct conduct))  == -1){
     perror("failed while unmaping");
     exit(EXIT_FAILURE);
@@ -208,11 +204,4 @@ void conduct_destroy(struct conduct *conduct){
     perror("failed while unmaping");
     exit(EXIT_FAILURE);
   }
-}
-
-size_t minimum(size_t n, size_t c){
-  if (n > c) {
-    return c;
-  }
-  return n;
 }
