@@ -5,31 +5,23 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 
 int main(){
   struct conduct *cond;
-  cond = conduct_create(NULL, 20, 40);
-  char buff[] = "Salam";
-  int f = fork();
-  if(f == 0){
-    int rc1 = conduct_write(cond,buff, strlen(buff));
-    printf("%d\n",rc1 );
-    if(rc1 < 0){
-      perror("conduct_write :");
-      exit(-1);
-    }
-    conduct_close(cond);
-    exit(1);
-  }else{
-  wait(NULL);
-  int rc2 = conduct_read(cond, buff, 10);
-  printf("%d\n", rc2);
-  if(rc2 < 0){
-    perror("conduct_read :");
+  char buff[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
+  clock_t begin = clock();
+  cond = conduct_open("tata");
+  //cond = conduct_create("tata", 20, 1024);
+  int rc1 = conduct_write(cond,buff, sizeof(buff));
+  clock_t end = clock();
+  printf("%d\n",rc1 );
+  if(rc1 < 0){
+    perror("conduct_write :");
     exit(-1);
   }
-  printf("%s\n", buff);
-  conduct_destroy(cond);
+  //clock_t end = clock();
+  double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+  printf("temps write conduct: %f\n", time_spent);
   return 0;
-  }
 }
