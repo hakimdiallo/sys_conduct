@@ -211,10 +211,26 @@ void conduct_destroy(struct conduct *conduct){
 }
 
 ssize_t conduct_writev(struct conduct *c, struct iovec *iov, int iovcnt){
-
   int i;
   for (i = 1; i < iovcnt; i++) {
-    //iov[0]->iov_base
+    memcpy(iov[0].iov_base+iov[0].iov_len,iov[i].iov_base,iov[i].iov_len);
+    iov[0].iov_len = iov[0].iov_len + iov[i].iov_len;
   }
-  return 0;
+  return conduct_write(c, iov[0].iov_base, iov[0].iov_len);
+}
+
+ssize_t conduct_readv(struct conduct *c, struct iovec *iov, int iovcnt){
+  int i;
+  size_t count = 0;
+  for (i = 0; i < iovcnt; i++) {
+    count = count + iov[i].iov_len;
+  }
+  void * buf = 0;
+  size_t cpt = 0;
+  count = conduct_read(c, buf, count);
+  for (i = 0; i < iovcnt; i++) {
+    memcpy(iov[i].iov_base,buf+cpt,iov[i].iov_len);
+    cpt = cpt + iov[i].iov_len;
+  }
+  return count;
 }
