@@ -14,6 +14,8 @@ int main(){
   cond = conduct_open("tata");
   //cond = conduct_create("tata", 20, 1024);
   int rc1 = conduct_write(cond,buff, sizeof(buff));
+  //conduct_write_eof(cond);
+  //conduct_write(cond,buff, sizeof(buff));
   clock_t end = clock();
   printf("%d\n",rc1 );
   if(rc1 < 0){

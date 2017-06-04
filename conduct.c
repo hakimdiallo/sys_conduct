@@ -9,7 +9,6 @@
 #include <string.h>
 #include <pthread.h>
 #include <errno.h>
-#include <sys/uio.h>
 #include "conduct.h"
 
 struct conduct{
@@ -23,25 +22,24 @@ struct conduct{
   pthread_cond_t full_conduct;
   pthread_mutexattr_t mutex_attr;
   pthread_condattr_t cond_attr;
-  //void *buffer;
 }conduct;
 
 struct conduct *conduct_create(const char *name, size_t a, size_t c){
   struct conduct* cond;
-  if(name==NULL){
+  if(name == NULL){
     cond =  mmap(NULL, sizeof(struct conduct)+c, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if(cond == MAP_FAILED){
-      perror("mmap");
-      exit(EXIT_FAILURE);
+      perror("mmap anonyme");
+      return NULL;
     }
     cond = (struct conduct *) cond;
-    memset(cond->name,0, 255);
+    memset(cond, 0, (sizeof(struct conduct)+c));
   }
   else{
-    int fd=open(name, O_CREAT |  O_RDWR, 0777);
+    int fd = open(name, O_CREAT |  O_RDWR, 0777);
     if(fd == -1){
       perror("open");
-      exit(EXIT_FAILURE);
+      return NULL;
     }
     int ft = ftruncate(fd, sizeof(struct conduct)+c);
     if(ft == -1){
@@ -50,15 +48,17 @@ struct conduct *conduct_create(const char *name, size_t a, size_t c){
     }
     cond = mmap(NULL,sizeof(struct conduct)+c, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if(cond == MAP_FAILED){
-      perror("mmap");
+      perror("mmap nomme");
       return NULL;
     }
-    cond = (struct conduct *) cond;
     close(fd);
+    cond = (struct conduct *) cond;
+    memset(cond, 0, (sizeof(struct conduct)+c));
+    memset(cond->name,0, 255);
     //cond->name = strdup(name);
     strcpy(cond->name, name);
   }
-  memset(cond, 0, (sizeof(struct conduct)+c));
+  //memset(cond, 0, (sizeof(struct conduct)+c));
   pthread_mutexattr_init(&cond->mutex_attr);
   pthread_condattr_init(&cond->cond_attr);
   pthread_mutexattr_setpshared(&cond->mutex_attr, PTHREAD_PROCESS_SHARED);
@@ -77,6 +77,7 @@ struct conduct *conduct_create(const char *name, size_t a, size_t c){
 struct conduct *conduct_open(const char*name){
   int fd=open(name, O_RDWR, 0777);
   if(fd == -1){
+    errno = EPIPE;
     perror("open");
     exit(EXIT_FAILURE);
   }
@@ -89,7 +90,7 @@ struct conduct *conduct_open(const char*name){
   struct conduct *cond;
   cond = mmap(NULL,finfo.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   if(cond == MAP_FAILED){
-    perror("mmap");
+    perror("mmap open");
     return NULL;
   }
   cond = (struct conduct *) cond;
@@ -121,6 +122,9 @@ ssize_t conduct_read(struct conduct *c, void *buf, size_t count){
     else{
       memmove((void *)c+sizeof(struct conduct), (void *)c+sizeof(struct conduct)+count, c->current_size - count);
       memset((void *)c+sizeof(struct conduct)+(c->current_size -count ), 0, c->c - (c->current_size - count));
+    }
+    if (sizeof(c->name) > 0) {
+      msync(c, c->c, MS_SYNC | MS_INVALIDATE);
     }
 //    printf("%d\n", (int)*c->current_size);
     c->current_size = c->current_size - count;
@@ -154,6 +158,9 @@ ssize_t conduct_write(struct conduct *c, const void *buf, size_t count){
     }
     if ((count <= c->a && count <= (c->c-c->current_size)) || (count > c->a && count <= (c->c-c->current_size))) {
       memcpy((void *)c+sizeof(struct conduct)+c->current_size,buf,count);
+      if (sizeof(c->name) > 0) {
+        msync(c, c->c, MS_SYNC | MS_INVALIDATE);
+      }
       c->current_size = c->current_size  + count;
       //printf("Thread ecriture broadcast sur empty\n");
       pthread_mutex_unlock(&c->verrou);
@@ -164,6 +171,9 @@ ssize_t conduct_write(struct conduct *c, const void *buf, size_t count){
     else if (count > c->a && count > (c->c-c->current_size)) {
       size_t m = c->c - c->current_size;
       memcpy((void *)c+sizeof(struct conduct)+c->current_size,buf,m);
+      if (sizeof(c->name) > 0) {
+        msync(c, c->c, MS_SYNC | MS_INVALIDATE);
+      }
       c->current_size = c->current_size  + m;
       //printf("Thread ecriture broadcast sur empty\n");
       pthread_mutex_unlock(&c->verrou);
@@ -190,33 +200,42 @@ int conduct_write_eof(struct conduct *c){
   return 0;
 }
 
-void conduct_close(struct conduct *conduct){
-  if(munmap(conduct, conduct->c + sizeof(struct conduct))  == -1){
+void conduct_close(struct conduct *c){
+  if(munmap(c, c->c + sizeof(struct conduct))  == -1){
     perror("failed while unmaping");
     exit(EXIT_FAILURE);
   }
 }
 
-void conduct_destroy(struct conduct *conduct){
-  if(strlen(conduct->name) == 0){
-    if (unlink(conduct->name) == -1) {
+void conduct_destroy(struct conduct *c){
+  if(sizeof(c->name) > 0){
+    if (unlink(c->name) == -1) {
       perror("unlink");
       exit(EXIT_FAILURE);
     }
   }
-  if(munmap(conduct, conduct->c + sizeof(struct conduct)) == -1){
-    perror("failed while unmaping");
-    exit(EXIT_FAILURE);
-  }
+  conduct_close(c);
 }
 
 ssize_t conduct_writev(struct conduct *c, struct iovec *iov, int iovcnt){
   int i;
-  for (i = 1; i < iovcnt; i++) {
-    memcpy(iov[0].iov_base+iov[0].iov_len,iov[i].iov_base,iov[i].iov_len);
-    iov[0].iov_len = iov[0].iov_len + iov[i].iov_len;
+  size_t size = 0;
+  for (i = 0; i < iovcnt; i++) {
+    size = size + iov[i].iov_len;
   }
-  return conduct_write(c, iov[0].iov_base, iov[0].iov_len);
+  void *ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (ptr == MAP_FAILED) {
+    perror("mmap write v");
+    exit(EXIT_FAILURE);
+  }
+  size_t cpt = 0;
+  for (i = 0; i < iovcnt; i++) {
+    memcpy(ptr+cpt,iov[i].iov_base,iov[i].iov_len);
+    cpt = cpt + iov[i].iov_len;
+  }
+  size_t r = conduct_write(c, ptr, size);
+  munmap(ptr, size);
+  return r;
 }
 
 ssize_t conduct_readv(struct conduct *c, struct iovec *iov, int iovcnt){
@@ -228,9 +247,10 @@ ssize_t conduct_readv(struct conduct *c, struct iovec *iov, int iovcnt){
   void * buf = 0;
   size_t cpt = 0;
   count = conduct_read(c, buf, count);
-  for (i = 0; i < iovcnt; i++) {
+  cpt = count;
+  while (cpt > 0) {
     memcpy(iov[i].iov_base,buf+cpt,iov[i].iov_len);
-    cpt = cpt + iov[i].iov_len;
+    cpt = cpt - iov[i].iov_len;
   }
   return count;
 }

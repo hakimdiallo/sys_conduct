@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <sys/uio.h>
 
 struct conduct;
 
@@ -9,4 +10,5 @@ ssize_t conduct_write(struct conduct *c, const void *buf, size_t count);
 int conduct_write_eof(struct conduct *c);
 void conduct_close(struct conduct *conduct);
 void conduct_destroy(struct conduct *conduct);
-size_t minimum(size_t n, size_t c);
+ssize_t conduct_writev(struct conduct *c, struct iovec *iov, int iovcnt);
+ssize_t conduct_readv(struct conduct *c, struct iovec *iov, int iovcnt);
